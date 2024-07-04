@@ -1,0 +1,1 @@
+0 0 * * * bash backup.sh /home/ubuntu/temp /home/ubuntu/backups key.gpg 1

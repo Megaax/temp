@@ -9,7 +9,7 @@ validate_backup_parameters() {
 
     if [[ $# -ne 4 ]]; then
         printf "Error: Invalid number of parameters\n" >&2
-        printf "Usage: <source_dir> <dest_dir> <encryption_key> <num_days>\n" >&                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        2
+        printf "Usage: <source_dir> <dest_dir> <encryption_key> <num_days>\n" >&                                                                                                                                                                                                                                                                                                                                       2
         return 1
     fi
 
@@ -19,12 +19,12 @@ validate_backup_parameters() {
     fi
 
     if [[ ! -d "$dest_dir" ]]; then
-        printf "Error: Destination directory '%s' does not exist\n" "$dest_dir"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         >&2
+        printf "Error: Destination directory '%s' does not exist\n" "$dest_dir"                                                                                                                                                                                                                                                                                                                                        >&2
         return 1
     fi
 
     if ! [[ "$num_days" =~ ^[0-9]+$ ]]; then
-        printf "Error: Number of days '%s' is not a valid number\n" "$num_days"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         >&2
+        printf "Error: Number of days '%s' is not a valid number\n" "$num_days"                                                                                                                                                                                                                                                                                                                                        >&2
         return 1
     fi
 
@@ -46,6 +46,35 @@ backup() {
 
     mkdir -p "$backup_subdir"
 
+
+        # Check for modified files in the source directory itself
+    modified_files=$(find "$source_dir" -maxdepth 1 -type f -mtime -"$num_days")
+    if [[ -n "$modified_files" ]]; then
+        tar_file="$backup_subdir/${source_dir##*/}_$formatted_date.tgz"
+        temp_dir="$backup_subdir/${source_dir##*/}_temp"
+        mkdir -p "$temp_dir"
+
+        while IFS= read -r file; do
+            target="$temp_dir/$(basename "$file")"
+            cp "$file" "$target"
+        done <<< "$modified_files"
+
+        tar -czvf "$tar_file" -C "$backup_subdir" "${source_dir##*/}_temp" || {
+            echo "Error: Failed to create tarball for modified files in $source_dir"
+        }
+
+        if [[ -f "$tar_file" ]]; then
+            gpg --batch --yes --passphrase "$encryption_key" -c "$tar_file"
+            rm "$tar_file"
+        fi
+
+        rm -r "$temp_dir"
+    else
+        echo "No modified files found in $source_dir"
+    fi
+
+
+
     shopt -s nullglob
     for dir in "$source_dir"/*/; do
         dir="${dir%/}"
@@ -60,13 +89,13 @@ backup() {
             temp_dir="$backup_subdir/$dir_name"
             mkdir -p "$temp_dir"
 
-            # Copy each modified file to the temporary directory, preserving the                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         directory structure
+            # Copy each modified file to the temporary directory, preserving the                                                                                                                                                                                                                                                                                                                                        directory structure
             while IFS= read -r file; do
                 target="$temp_dir/$(basename "$file")"
                 cp "$file" "$target"
             done <<< "$modified_files"
 
-            # Create a tar.gz file with the temporary directory containing only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         modified files
+            # Create a tar.gz file with the temporary directory containing only                                                                                                                                                                                                                                                                                                                                        modified files
             tar -czvf "$tar_file" -C "$backup_subdir" "$dir_name" || {
                 echo "Error: Failed to create tarball for $dir"
                 continue
@@ -80,7 +109,7 @@ backup() {
         else
             echo "No modified files found in $dir"
         fi
-        rm -r "$temp_dir"
+       # rm -r "$temp_dir"
     done
     shopt -u nullglob
 
@@ -90,7 +119,7 @@ backup() {
 
     echo "Adding files to $all_files_tar:"
     find "$backup_subdir" -maxdepth 1 -type f -name '*.gpg' -print0 | \
-        tar --null --transform='s|^.*/||' -cf "$all_files_tar" --files-from - ||                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         {
+        tar --null --transform='s|^.*/||' -cf "$all_files_tar" --files-from - ||                                                                                                                                                                                                                                                                                                                                        {
         echo "Error: Failed to create all_files_tar"
     }
 
@@ -100,19 +129,15 @@ backup() {
         tar -tvf "$all_files_tar"
 
         # Compress the tar file using gzip and delete the tar file
-        gzip "$all_files_tar" && rm "$all_files_tar"
+        gzip "$all_files_tar" #&& rm "$all_files_tar"
 
         # Encrypt the compressed tar.gz file
         if [[ -f "$all_files_gz" ]]; then
             gpg --batch --yes --passphrase "$encryption_key" -c "$all_files_gz"
             rm "$all_files_gz"
-            # SCP the encrypted gzip file to remote server
-            scp "$all_files_gz.gpg" "$remote_server" || {
-                echo "Error: Failed to SCP $all_files_gz.gpg to remote server"
-                return 1
-            }
+        
         fi
-        find "$backup_subdir" -maxdepth 1 -type f -name '*.gpg' -not -name "${so                                                                                                             urce_dir}_$formatted_date.tar.gz.gpg" -exec rm {} \;
+        find "$backup_subdir" -maxdepth 1 -type f -name '*.gpg' -not -name "${source_dir}_$formatted_date.tar.gz.gpg" -exec rm {} \;
 
         # Remove all temporary directories created for individual backups
         for temp_dir in "$backup_subdir"/*/; do
@@ -164,7 +189,7 @@ perform_restore() {
     for file in "$restore_dir"/*; do
         if [[ -f "$file" && "$file" =~ \.gpg$ ]]; then
             decrypted_file="${file%.gpg}"
-            gpg --batch --yes --passphrase "$encryption_key" -o "$decrypted_file                                                                                                             " -d "$file"
+            gpg --batch --yes --passphrase "$encryption_key" -o "$decrypted_file" -d "$file"
             if [[ $? -eq 0 && -f "$decrypted_file" ]]; then
                 tar -xvf "$decrypted_file" -C "$restore_dir"
                 rm "$decrypted_file"  # Remove decrypted file after extraction
@@ -184,3 +209,4 @@ perform_restore() {
 
     printf "Restore completed successfully.\n"
 }
+

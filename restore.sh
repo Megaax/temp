@@ -25,3 +25,4 @@ main() {
 
 # Execute main function with provided arguments
 main "$@"
+

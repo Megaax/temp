@@ -51,15 +51,9 @@ backup() {
     modified_files=$(find "$source_dir" -maxdepth 1 -type f -mtime -"$num_days")
     if [[ -n "$modified_files" ]]; then
         tar_file="$backup_subdir/${source_dir##*/}_$formatted_date.tgz"
-        temp_dir="$backup_subdir/${source_dir##*/}_temp"
-        mkdir -p "$temp_dir"
 
-        while IFS= read -r file; do
-            target="$temp_dir/$(basename "$file")"
-            cp "$file" "$target"
-        done <<< "$modified_files"
-
-        tar -czvf "$tar_file" -C "$backup_subdir" "${source_dir##*/}_temp" || {
+        # Create a tar.gz file with the modified files directly
+        tar -czvf "$tar_file" -C "$source_dir" $(echo "$modified_files" | xargs -n1 basename) || {
             echo "Error: Failed to create tarball for modified files in $source_dir"
         }
 
@@ -67,11 +61,10 @@ backup() {
             gpg --batch --yes --passphrase "$encryption_key" -c "$tar_file"
             rm "$tar_file"
         fi
-
-        rm -r "$temp_dir"
     else
         echo "No modified files found in $source_dir"
     fi
+
 
 
 
@@ -114,7 +107,7 @@ backup() {
     shopt -u nullglob
 
     # Backup all encrypted files directly under the main backup directory
-    all_files_tar="$backup_subdir/${source_dir}_$formatted_date.tar"
+    all_files_tar="$backup_subdir/${source_dir##*/}_$formatted_date.tar"
     all_files_gz="$all_files_tar.gz"
 
     echo "Adding files to $all_files_tar:"
@@ -137,7 +130,7 @@ backup() {
             rm "$all_files_gz"
         
         fi
-        find "$backup_subdir" -maxdepth 1 -type f -name '*.gpg' -not -name "${source_dir}_$formatted_date.tar.gz.gpg" -exec rm {} \;
+        find "$backup_subdir" -maxdepth 1 -type f -name '*.gpg' -not -name "${source_dir##*/}_$formatted_date.tar.gz.gpg" -exec rm {} \;
 
         # Remove all temporary directories created for individual backups
         for temp_dir in "$backup_subdir"/*/; do
@@ -194,7 +187,7 @@ perform_restore() {
                 tar -xvf "$decrypted_file" -C "$restore_dir"
                 rm "$decrypted_file"  # Remove decrypted file after extraction
                 rm "$file"  # Remove original .gpg file
-                produced_files+=("$decrypted_file")
+		produced_files+=("basename $decrypted_file")
             else
                 echo "Error: Failed to decrypt $file"
             fi
